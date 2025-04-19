@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Camera Stream</title>
+  </head>
+  <body>
+    <video
+      id="video"
+      autoplay
+      playsinline
+      muted
+      style="width: 100vw; height: 100vh"
+    ></video>
+
+    <script>
+      navigator.mediaDevices
+        .getUserMedia({ video: { facingMode: "user" }, audio: false })
+        .then((stream) => {
+          const video = document.getElementById("video");
+          video.srcObject = stream;
+        })
+        .catch((err) => {
+          alert("Không thể truy cập camera: " + err);
+        });
+    </script>
+  </body>
+</html>
