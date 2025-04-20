@@ -45,14 +45,12 @@
     </style>
   </head>
   <body>
-    <h1>📡 Stream Camera iPhone → Máy Tính (OBS)</h1>
-
-    <video id="video" autoplay playsinline muted></video>
-
     <div id="controls">
       <button onclick="startSender()">📱 Gửi từ iPhone</button>
       <button onclick="startReceiver()">🖥 Nhận trên Máy Tính</button>
     </div>
+
+    <video id="video" autoplay playsinline muted></video>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
