@@ -1,40 +1,32 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>WebRTC Stream</title>
-    <style>
-      body {
-        font-family: sans-serif;
-        text-align: center;
-        background: #000;
-        color: #fff;
-      }
-      video {
-        width: 90%;
-        max-width: 640px;
-        border: 2px solid white;
-        margin: 1rem auto;
-        display: block;
-      }
-      #btns {
-        margin-top: 1rem;
-      }
-    </style>
-  </head>
-  <body>
-    <h2>WebRTC Live Stream</h2>
-    <div id="btns">
-      <button onclick="startSender()">📱 Gửi từ iPhone</button>
-      <button onclick="startReceiver()">🖥 Nhận trên máy tính</button>
-    </div>
-    <video id="video" autoplay playsinline muted></video>
+<head>
+  <title>WebRTC 2-Way Call</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; background: #000; color: #fff; }
+    video { width: 45%; max-width: 640px; border: 2px solid white; margin: 1rem; }
+    #btns { margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h2>WebRTC Gọi Video Hai Chiều</h2>
+  <div id="btns">
+    <button onclick="startSender()">📱 Gửi từ iPhone</button>
+    <button onclick="startReceiver()">🖥 Nhận trên máy tính</button>
+    <button onclick="startTwoWayCall()">📞 Gọi 2 chiều</button>
+  </div>
 
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <div>
+    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+  </div>
 
-    <script>
-      // 🔐 Dán config Firebase của bạn tại đây (tạo project free)
-      const firebaseConfig = {
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <script>
+    // 🔐 Dán config Firebase của bạn tại đây
+    const firebaseConfig = {
         apiKey: "AIzaSyCXq2XuAoR_Z0Cx4ZGzqoYQ56qbBZN4wxM",
         authDomain: "stream-camera-27465.firebaseapp.com",
         databaseURL: "https://stream-camera-27465-default-rtdb.firebaseio.com",
@@ -44,78 +36,76 @@
         appId: "1:317939678008:web:1b628b1fc43822130bdfcd",
         measurementId: "G-ENKM03MX2Q",
       };
-      firebase.initializeApp(firebaseConfig);
-      const db = firebase.database();
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-      let pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-      });
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
 
-      let localStream = null;
-      const video = document.getElementById("video");
+    let localStream = null;
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
 
-      async function startSender() {
-        localStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
-          audio: false,
-        });
-        video.srcObject = localStream;
+    async function setupLocalStream(audio = false) {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio });
+      localVideo.srcObject = localStream;
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
 
-        localStream
-          .getTracks()
-          .forEach((track) => pc.addTrack(track, localStream));
+    async function startSender() {
+      await setupLocalStream(false); // chỉ video
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      db.ref("webrtc/offer").set(JSON.stringify(offer));
+      pc.onicecandidate = e => {
+        if (e.candidate) db.ref("webrtc/sender_candidate").push(JSON.stringify(e.candidate));
+      };
+    }
 
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        db.ref("webrtc/offer").set(JSON.stringify(offer));
+    async function startReceiver() {
+      pc.ontrack = (event) => remoteVideo.srcObject = event.streams[0];
+      const offerSnap = await db.ref("webrtc/offer").once("value");
+      if (!offerSnap.exists()) return alert("Chưa có tín hiệu gửi lên!");
+      const offer = JSON.parse(offerSnap.val());
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      db.ref("webrtc/answer").set(JSON.stringify(answer));
+      pc.onicecandidate = e => {
+        if (e.candidate) db.ref("webrtc/receiver_candidate").push(JSON.stringify(e.candidate));
+      };
+    }
 
-        pc.onicecandidate = (e) => {
-          if (e.candidate) {
-            db.ref("webrtc/sender_candidate").push(JSON.stringify(e.candidate));
-          }
-        };
+    async function startTwoWayCall() {
+      await setupLocalStream(true); // có mic
+      pc.ontrack = (event) => remoteVideo.srcObject = event.streams[0];
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      db.ref("webrtc/offer").set(JSON.stringify(offer));
+      pc.onicecandidate = e => {
+        if (e.candidate) db.ref("webrtc/sender_candidate").push(JSON.stringify(e.candidate));
+      };
+    }
+
+    // Nhận answer nếu là sender
+    db.ref("webrtc/answer").on("value", async (snap) => {
+      if (!pc.currentRemoteDescription && snap.val()) {
+        const answer = JSON.parse(snap.val());
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
       }
+    });
 
-      async function startReceiver() {
-        pc.ontrack = (event) => {
-          video.srcObject = event.streams[0];
-        };
+    // Nhận ICE từ bên kia
+    db.ref("webrtc/sender_candidate").on("child_added", (snap) => {
+      const cand = new RTCIceCandidate(JSON.parse(snap.val()));
+      pc.addIceCandidate(cand);
+    });
 
-        const offerData = await db.ref("webrtc/offer").once("value");
-        const offer = JSON.parse(offerData.val());
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        db.ref("webrtc/answer").set(JSON.stringify(answer));
-
-        pc.onicecandidate = (e) => {
-          if (e.candidate) {
-            db.ref("webrtc/receiver_candidate").push(
-              JSON.stringify(e.candidate)
-            );
-          }
-        };
-
-        // Lắng nghe sender ICE
-        db.ref("webrtc/sender_candidate").on("child_added", (snap) => {
-          const candidate = new RTCIceCandidate(JSON.parse(snap.val()));
-          pc.addIceCandidate(candidate);
-        });
-      }
-
-      // Lắng nghe receiver ICE nếu là sender
-      db.ref("webrtc/answer").on("value", async (snap) => {
-        if (!pc.currentRemoteDescription && snap.val()) {
-          const answer = JSON.parse(snap.val());
-          await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        }
-      });
-
-      db.ref("webrtc/receiver_candidate").on("child_added", (snap) => {
-        const candidate = new RTCIceCandidate(JSON.parse(snap.val()));
-        pc.addIceCandidate(candidate);
-      });
-    </script>
-  </body>
+    db.ref("webrtc/receiver_candidate").on("child_added", (snap) => {
+      const cand = new RTCIceCandidate(JSON.parse(snap.val()));
+      pc.addIceCandidate(cand);
+    });
+  </script>
+</body>
 </html>
