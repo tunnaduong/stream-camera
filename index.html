@@ -48,9 +48,10 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+
+// ID cuộc gọi (dùng chung)
 const callId = "test-call";
 
-// HTML elements
 const localVideo = document.getElementById("localVideo");
 const remoteVideo = document.getElementById("remoteVideo");
 
@@ -64,24 +65,27 @@ let isCaller = false;
 navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
   localVideo.srcObject = stream;
   stream.getTracks().forEach(track => pc.addTrack(track, stream));
+}).catch(e => {
+  console.error("Lỗi media: ", e);
 });
 
-// Gửi ICE
-pc.onicecandidate = e => {
-  if (e.candidate) {
-    db.ref(`${callId}/ice`).push(JSON.stringify(e.candidate));
+// Gửi ICE Candidate
+pc.onicecandidate = event => {
+  if (event.candidate) {
+    const icePath = isCaller ? 'callerIce' : 'calleeIce';
+    db.ref(`${callId}/${icePath}`).push(JSON.stringify(event.candidate));
   }
 };
 
 // Nhận remote stream
-pc.ontrack = e => {
-  remoteVideo.srcObject = e.streams[0];
+pc.ontrack = event => {
+  remoteVideo.srcObject = event.streams[0];
 };
 
-// Tạo hoặc tham gia cuộc gọi
+// Bắt đầu gọi hoặc chờ nhận cuộc gọi
 db.ref(`${callId}/offer`).once('value').then(snapshot => {
   if (snapshot.exists()) {
-    // Người nhận
+    // Vai trò: Người nhận
     isCaller = false;
     const offer = JSON.parse(snapshot.val());
     pc.setRemoteDescription(new RTCSessionDescription(offer)).then(() => {
@@ -92,7 +96,7 @@ db.ref(`${callId}/offer`).once('value').then(snapshot => {
       db.ref(`${callId}/answer`).set(JSON.stringify(pc.localDescription));
     });
   } else {
-    // Người gọi
+    // Vai trò: Người gọi
     isCaller = true;
     pc.createOffer().then(offer => {
       return pc.setLocalDescription(offer);
@@ -102,7 +106,7 @@ db.ref(`${callId}/offer`).once('value').then(snapshot => {
   }
 });
 
-// Nghe answer
+// Nghe answer nếu là caller
 db.ref(`${callId}/answer`).on('value', snapshot => {
   if (snapshot.exists() && isCaller) {
     const answer = JSON.parse(snapshot.val());
@@ -110,10 +114,11 @@ db.ref(`${callId}/answer`).on('value', snapshot => {
   }
 });
 
-// Nhận ICE
-db.ref(`${callId}/ice`).on('child_added', snapshot => {
+// Nhận ICE Candidate từ phía bên kia
+const remoteIcePath = isCaller ? 'calleeIce' : 'callerIce';
+db.ref(`${callId}/${remoteIcePath}`).on('child_added', snapshot => {
   const candidate = new RTCIceCandidate(JSON.parse(snapshot.val()));
-  pc.addIceCandidate(candidate);
+  pc.addIceCandidate(candidate).catch(e => console.error("Lỗi ICE: ", e));
 });
   </script>
 </body>
