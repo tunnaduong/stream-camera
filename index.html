@@ -48,6 +48,7 @@
     <div id="controls">
       <button onclick="startSender()">📱 Gửi từ iPhone</button>
       <button onclick="startReceiver()">🖥 Nhận trên Máy Tính</button>
+      <button onclick="resetRoom()">🧹 Xoá toàn bộ dữ liệu</button>
     </div>
 
     <video id="video" autoplay playsinline muted></video>
@@ -69,6 +70,8 @@
       };
       firebase.initializeApp(firebaseConfig);
       const db = firebase.database();
+      const roomId = "webrtc";
+      const roomRef = db.ref(roomId);
 
       let pc = new RTCPeerConnection({
         iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -139,6 +142,17 @@
         const candidate = new RTCIceCandidate(JSON.parse(snap.val()));
         pc.addIceCandidate(candidate);
       });
+
+      async function resetRoom() {
+        const confirmReset = confirm(
+          "⚠️ Bạn có chắc muốn xoá toàn bộ dữ liệu phòng?"
+        );
+        if (!confirmReset) return;
+
+        await roomRef.set(null);
+        console.log("🧹 Đã xoá toàn bộ dữ liệu trong room:", roomId);
+        alert("Đã xoá sạch dữ liệu Firebase 🎉");
+      }
     </script>
   </body>
 </html>
